@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- Classic Pong — 2-player paddle game on a canvas, no external dependencies -->
+  <!-- Dependencies: none (vanilla HTML/CSS/JS, canvas rendering) -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pong</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #1a1a2e;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      font-family: 'Segoe UI', sans-serif;
+      overflow: hidden;
+    }
+
+    #gameContainer {
+      position: relative;
+    }
+
+    canvas {
+      display: block;
+      border-radius: 12px;
+      box-shadow: 0 0 60px rgba(0, 0, 0, 0.7);
+    }
+
+    #overlay {
+      position: absolute;
+      inset: 0;
+      border-radius: 12px;
+      background: rgba(10, 10, 20, 0.88);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 20px;
+      transition: opacity 0.25s;
+    }
+
+    #overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #overlay h1 {
+      font-size: 64px;
+      font-weight: 800;
+      color: #f1f5f9;
+      letter-spacing: 8px;
+      text-shadow: 2px 2px 0 rgba(0,0,0,0.4);
+    }
+
+    #overlay .winner {
+      font-size: 28px;
+      font-weight: 700;
+      color: #fbbf24;
+      text-shadow: 0 0 20px rgba(251,191,36,0.5);
+    }
+
+    .controls-row {
+      display: flex;
+      gap: 48px;
+      margin-top: 4px;
+    }
+
+    .player-controls {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .player-controls .label {
+      font-size: 12px;
+      color: #64748b;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    .player-controls .keys {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .key {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 3px 10px;
+      font-size: 13px;
+      color: #e2e8f0;
+      font-family: monospace;
+      min-width: 36px;
+      text-align: center;
+    }
+
+    .start-hint {
+      font-size: 14px;
+      color: #64748b;
+      letter-spacing: 1px;
+    }
+
+    .mode-btn {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 10px 32px;
+      font-size: 15px;
+      font-family: 'Segoe UI', sans-serif;
+      color: #e2e8f0;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: background 0.15s, border-color 0.15s, transform 0.1s;
+    }
+
+    .mode-btn:hover {
+      background: #0f3460;
+      border-color: #60a5fa;
+      color: #fff;
+      transform: scale(1.04);
+    }
+
+    .mode-btns {
+      display: flex;
+      gap: 16px;
+    }
+
+    .diff-btns {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 220px;
+    }
+
+    .diff-btn {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 10px 0;
+      font-size: 15px;
+      font-family: 'Segoe UI', sans-serif;
+      color: #e2e8f0;
+      cursor: pointer;
+      letter-spacing: 1px;
+      width: 100%;
+      transition: background 0.15s, border-color 0.15s, transform 0.1s;
+    }
+
+    .diff-btn:hover { transform: scale(1.03); }
+    .diff-btn.easy:hover       { background: #14532d; border-color: #4ade80; color: #86efac; }
+    .diff-btn.medium:hover     { background: #1e3a5f; border-color: #60a5fa; color: #bae6fd; }
+    .diff-btn.hard:hover       { background: #431407; border-color: #fb923c; color: #fed7aa; }
+    .diff-btn.impossible:hover { background: #3b0a0a; border-color: #f87171; color: #fecaca; }
+
+    .back-hint {
+      font-size: 12px;
+      color: #475569;
+      cursor: pointer;
+      letter-spacing: 1px;
+    }
+    .back-hint:hover { color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div id="gameContainer">
+    <canvas id="canvas"></canvas>
+    <div id="overlay">
+      <h1>PONG</h1>
+      <div class="controls-row">
+        <div class="player-controls">
+          <div class="label">Player 1</div>
+          <div class="keys">
+            <div class="key">W</div>
+            <div class="key">S</div>
+          </div>
+        </div>
+        <div class="player-controls">
+          <div class="label">Player 2</div>
+          <div class="keys">
+            <div class="key">↑</div>
+            <div class="key">↓</div>
+          </div>
+        </div>
+      </div>
+      <div class="start-hint">Press Space or click to start</div>
+    </div>
+  </div>
+
+  <script>
+    // --- Constants ---
+    const W           = 800;
+    const H           = 500;
+    const PAD_W       = 12;
+    const PAD_H       = 80;
+    const PAD_MARGIN  = 24;
+    const BALL_SIZE   = 10;
+    const BALL_SPEED  = 5;
+    const PAD_SPEED   = 6;
+    const WIN_SCORE   = 7;
+
+    const STATE = { IDLE: 0, PLAYING: 1, PAUSED: 2, WIN: 3 };
+
+    // --- Canvas ---
+    const canvas  = document.getElementById('canvas');
+    const ctx     = canvas.getContext('2d');
+    const overlay = document.getElementById('overlay');
+    canvas.width  = W;
+    canvas.height = H;
+
+    // --- CPU difficulty configs ---
+    // speed: fraction of PAD_SPEED the CPU can move per frame
+    // error: max px the CPU aims away from the true landing spot (randomised each rally)
+    // reactX: how far from the right wall (px) before CPU starts tracking the ball
+    const DIFFICULTIES = {
+      easy:       { speed: 0.44, error: 62, reactX: W * 0.38 },
+      medium:     { speed: 0.62, error: 26, reactX: W * 0.58 },
+      hard:       { speed: 0.82, error: 9,  reactX: W       },
+      impossible: { speed: 1.18, error: 0,  reactX: W       },
+    };
+
+    // --- Game state ---
+    let state = STATE.IDLE;
+    let ball, p1, p2, keys, vscpu, cpuDifficulty, cpuTarget, cpuLastDX;
+
+    function reset(fullReset) {
+      if (fullReset) {
+        p1 = { x: PAD_MARGIN, y: H / 2 - PAD_H / 2, score: 0 };
+        p2 = { x: W - PAD_MARGIN - PAD_W, y: H / 2 - PAD_H / 2, score: 0 };
+      } else {
+        p1.y = H / 2 - PAD_H / 2;
+        p2.y = H / 2 - PAD_H / 2;
+      }
+      keys = {};
+      serveBall(fullReset ? 1 : (ball.dx > 0 ? -1 : 1));
+    }
+
+    function serveBall(dirX) {
+      const angle = (Math.random() * 0.6 - 0.3);
+      ball = {
+        x: W / 2,
+        y: H / 2,
+        dx: dirX * BALL_SPEED * Math.cos(angle),
+        dy: BALL_SPEED * Math.sin(angle),
+        speed: BALL_SPEED,
+      };
+      cpuLastDX = 0; // force target recalc on first frame after serve
+    }
+
+    // Simulate ball path to find where it will reach the CPU paddle, then add aim error
+    function predictLanding(errorRange) {
+      let sx = ball.x, sy = ball.y, sdx = ball.dx, sdy = ball.dy;
+      const targetX = p2.x - BALL_SIZE / 2;
+      for (let i = 0; i < 2000 && sx < targetX; i++) {
+        sx += sdx; sy += sdy;
+        if (sy <= BALL_SIZE / 2)     { sy = BALL_SIZE / 2;     sdy =  Math.abs(sdy); }
+        if (sy >= H - BALL_SIZE / 2) { sy = H - BALL_SIZE / 2; sdy = -Math.abs(sdy); }
+      }
+      return sy + (Math.random() * 2 - 1) * errorRange;
+    }
+
+    // --- Update ---
+    function update() {
+      if (state !== STATE.PLAYING) return;
+
+      // Paddle movement
+      if (keys['w'] || keys['W']) p1.y -= PAD_SPEED;
+      if (keys['s'] || keys['S']) p1.y += PAD_SPEED;
+      if (vscpu) {
+        const cfg = DIFFICULTIES[cpuDifficulty];
+
+        // Recalculate target whenever ball starts heading toward CPU (new rally or paddle hit)
+        if (ball.dx > 0 && cpuLastDX <= 0) {
+          cpuTarget = predictLanding(cfg.error);
+        }
+        cpuLastDX = ball.dx;
+
+        // Only move once ball enters the CPU's reaction zone
+        if (ball.dx > 0 && ball.x >= W - cfg.reactX) {
+          const center = p2.y + PAD_H / 2;
+          const diff   = cpuTarget - center;
+          const spd    = PAD_SPEED * cfg.speed;
+          if (Math.abs(diff) > 2) p2.y += diff > 0 ? Math.min(spd, diff) : Math.max(-spd, diff);
+        }
+      } else {
+        if (keys['ArrowUp'])   p2.y -= PAD_SPEED;
+        if (keys['ArrowDown']) p2.y += PAD_SPEED;
+      }
+
+      // Clamp paddles to canvas
+      p1.y = Math.max(0, Math.min(H - PAD_H, p1.y));
+      p2.y = Math.max(0, Math.min(H - PAD_H, p2.y));
+
+      // Move ball
+      ball.x += ball.dx;
+      ball.y += ball.dy;
+
+      // Top / bottom wall bounce
+      if (ball.y - BALL_SIZE / 2 <= 0) {
+        ball.y = BALL_SIZE / 2;
+        ball.dy = Math.abs(ball.dy);
+      }
+      if (ball.y + BALL_SIZE / 2 >= H) {
+        ball.y = H - BALL_SIZE / 2;
+        ball.dy = -Math.abs(ball.dy);
+      }
+
+      // Paddle collision — P1 (left)
+      if (
+        ball.dx < 0 &&
+        ball.x - BALL_SIZE / 2 <= p1.x + PAD_W &&
+        ball.x - BALL_SIZE / 2 >= p1.x &&
+        ball.y >= p1.y - BALL_SIZE / 2 &&
+        ball.y <= p1.y + PAD_H + BALL_SIZE / 2
+      ) {
+        ball.x = p1.x + PAD_W + BALL_SIZE / 2;
+        reflectBall(ball, p1);
+      }
+
+      // Paddle collision — P2 (right)
+      if (
+        ball.dx > 0 &&
+        ball.x + BALL_SIZE / 2 >= p2.x &&
+        ball.x + BALL_SIZE / 2 <= p2.x + PAD_W &&
+        ball.y >= p2.y - BALL_SIZE / 2 &&
+        ball.y <= p2.y + PAD_H + BALL_SIZE / 2
+      ) {
+        ball.x = p2.x - BALL_SIZE / 2;
+        reflectBall(ball, p2);
+      }
+
+      // Score — ball exits left
+      if (ball.x + BALL_SIZE / 2 < 0) {
+        p2.score++;
+        checkWin() || reset(false);
+        return;
+      }
+
+      // Score — ball exits right
+      if (ball.x - BALL_SIZE / 2 > W) {
+        p1.score++;
+        checkWin() || reset(false);
+        return;
+      }
+    }
+
+    function reflectBall(ball, pad) {
+      // Hit position relative to paddle center (-1 top … +1 bottom)
+      const rel    = (ball.y - (pad.y + PAD_H / 2)) / (PAD_H / 2);
+      const maxAngle = Math.PI / 4; // 45°
+      const angle  = rel * maxAngle;
+      ball.speed   = Math.min(ball.speed + 0.3, 14); // gradually speed up, cap at 14
+      const dirX   = ball.dx > 0 ? -1 : 1;
+      ball.dx      = dirX * ball.speed * Math.cos(angle);
+      ball.dy      = ball.speed * Math.sin(angle);
+    }
+
+    function checkWin() {
+      if (p1.score >= WIN_SCORE || p2.score >= WIN_SCORE) {
+        state = STATE.WIN;
+        showWinOverlay();
+        return true;
+      }
+      return false;
+    }
+
+    // --- Draw ---
+    function draw() {
+      // Background
+      ctx.fillStyle = '#0a0a16';
+      ctx.fillRect(0, 0, W, H);
+
+      // Center dashed divider
+      ctx.setLineDash([12, 10]);
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(W / 2, 0);
+      ctx.lineTo(W / 2, H);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Scores
+      ctx.font = 'bold 56px Segoe UI';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.fillText(p1.score, W / 4, 72);
+      ctx.fillText(p2.score, W * 3 / 4, 72);
+
+      // Player labels
+      ctx.font = '12px Segoe UI';
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.fillText('P1', W / 4, 90);
+      ctx.fillText(vscpu ? 'CPU' : 'P2', W * 3 / 4, 90);
+
+      // Paddles
+      drawPaddle(p1);
+      drawPaddle(p2);
+
+      // Ball
+      ctx.shadowColor = '#ffffff';
+      ctx.shadowBlur = 14;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.roundRect(ball.x - BALL_SIZE / 2, ball.y - BALL_SIZE / 2, BALL_SIZE, BALL_SIZE, 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    function drawPaddle(pad) {
+      ctx.shadowColor = 'rgba(255,255,255,0.3)';
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = '#e2e8f0';
+      ctx.beginPath();
+      ctx.roundRect(pad.x, pad.y, PAD_W, PAD_H, 4);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // --- Game loop ---
+    let animId;
+    function loop() {
+      update();
+      draw();
+      animId = requestAnimationFrame(loop);
+    }
+
+    // --- Overlay ---
+    function showStartOverlay() {
+      overlay.innerHTML = `
+        <h1>PONG</h1>
+        <div class="controls-row">
+          <div class="player-controls">
+            <div class="label">Player 1</div>
+            <div class="keys">
+              <div class="key">W</div>
+              <div class="key">S</div>
+            </div>
+          </div>
+          <div class="player-controls">
+            <div class="label">Player 2</div>
+            <div class="keys">
+              <div class="key">↑</div>
+              <div class="key">↓</div>
+            </div>
+          </div>
+        </div>
+        <div class="mode-btns">
+          <button class="mode-btn" id="btn2p">2 Players</button>
+          <button class="mode-btn" id="btnCpu">vs CPU</button>
+        </div>
+      `;
+      overlay.classList.remove('hidden');
+      document.getElementById('btn2p').addEventListener('click', e => { e.stopPropagation(); vscpu = false; startGame(); });
+      document.getElementById('btnCpu').addEventListener('click', e => { e.stopPropagation(); vscpu = true; showDifficultyOverlay(); });
+    }
+
+    function showDifficultyOverlay() {
+      overlay.innerHTML = `
+        <h1>PONG</h1>
+        <div class="start-hint" style="color:#94a3b8">Select difficulty</div>
+        <div class="diff-btns">
+          <button class="diff-btn easy"       id="dEasy">Easy</button>
+          <button class="diff-btn medium"     id="dMedium">Medium</button>
+          <button class="diff-btn hard"       id="dHard">Hard</button>
+          <button class="diff-btn impossible" id="dImpossible">Impossible</button>
+        </div>
+        <div class="back-hint" id="btnBack">← Back</div>
+      `;
+      overlay.classList.remove('hidden');
+      const pick = (diff, e) => { e.stopPropagation(); cpuDifficulty = diff; startGame(); };
+      document.getElementById('dEasy').addEventListener('click',       e => pick('easy', e));
+      document.getElementById('dMedium').addEventListener('click',     e => pick('medium', e));
+      document.getElementById('dHard').addEventListener('click',       e => pick('hard', e));
+      document.getElementById('dImpossible').addEventListener('click', e => pick('impossible', e));
+      document.getElementById('btnBack').addEventListener('click',     e => { e.stopPropagation(); showStartOverlay(); });
+    }
+
+    function showWinOverlay() {
+      const winner = p1.score >= WIN_SCORE ? 'Player 1' : (vscpu ? 'CPU' : 'Player 2');
+      const diffLabel = vscpu ? ` <span style="font-size:13px;color:#64748b;font-weight:400">(${cpuDifficulty})</span>` : '';
+      overlay.innerHTML = `
+        <h1>PONG</h1>
+        <div class="winner">${winner} Wins!${diffLabel}</div>
+        <div class="start-hint">Press Space or click to return to menu</div>
+      `;
+      overlay.classList.remove('hidden');
+    }
+
+    function hideOverlay() {
+      overlay.classList.add('hidden');
+    }
+
+    function startGame() {
+      reset(true);
+      state = STATE.PLAYING;
+      hideOverlay();
+    }
+
+    // --- Input ---
+    document.addEventListener('keydown', e => {
+      keys[e.key] = true;
+
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault();
+
+      if (e.key === ' ') {
+        e.preventDefault();
+        if (state === STATE.IDLE || state === STATE.WIN) showStartOverlay();
+      }
+    });
+
+    document.addEventListener('keyup', e => {
+      keys[e.key] = false;
+    });
+
+    canvas.addEventListener('click', () => {
+      if (state === STATE.IDLE || state === STATE.WIN) showStartOverlay();
+    });
+
+    // --- Init ---
+    vscpu = false;
+    cpuDifficulty = 'medium';
+    cpuTarget = H / 2;
+    cpuLastDX = 0;
+    reset(true);
+    showStartOverlay();
+    loop();
+  </script>
+</body>
+</html>
